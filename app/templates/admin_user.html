@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Admin — {{ subject.display_name or subject.email }}{% endblock %}
+{% block content %}
+<p class="small"><a class="btn-link" href="/admin">← Admin</a></p>
+<h1>{{ subject.display_name or subject.email }}</h1>
+<p class="muted">
+  {{ subject.email }} · agency <code>{{ subject.agency_id }}</code>
+  · {{ subject.account_kind }}
+</p>
+
+{% if job_error %}
+<p class="notice error">{{ job_error }}</p>
+{% elif job_notice == 'work_profile' %}
+<p class="notice ok">Work profile generated. Sparse signals may yield low confidence — that is expected for provisionals.</p>
+{% elif job_notice == 'display_name' %}
+<p class="notice ok">Display name saved. LinkedIn match cleared — run <strong>Generate work profile</strong> to re-search.</p>
+{% endif %}
+
+<section class="card">
+  <h2>Identity</h2>
+  <form method="post" action="/admin/users/{{ subject.user_id }}/display-name" class="actions" style="align-items:end">
+    <label class="small">
+      Display name
+      <input
+        type="text"
+        name="display_name"
+        value="{{ subject.display_name or '' }}"
+        placeholder="e.g. Jeff Lewis"
+        required
+        style="display:block;margin-top:0.35rem;min-width:16rem;padding:0.45rem 0.6rem;border-radius:8px;border:1px solid var(--border);background:var(--btn-bg);color:var(--text)"
+      />
+    </label>
+    <button class="btn" type="submit">Save name</button>
+  </form>
+  <p class="muted small">
+    LinkedIn is gated on this name. Email-only provisionals (e.g. <code>jlewis@…</code>) are ambiguous
+    (Jeff vs John) until resolved via Google login, calendar <code>displayName</code>, web name discovery, or Save name here.
+  </p>
+</section>
+
+<div class="actions">
+  <form method="post" action="/admin/users/{{ subject.user_id }}/work-profile" id="admin-wp-form">
+    <button class="btn primary" type="submit" id="admin-wp-btn">Generate work profile</button>
+  </form>
+</div>
+<p class="muted small">
+  Refreshes LinkedIn / HiBob / KB (and Google/Calendar when available), then infers role from titles,
+  LinkedIn, and meeting-network closeness. LinkedIn is rejected when the profile name conflicts with this identity.
+</p>
+<script>
+  document.getElementById("admin-wp-form")?.addEventListener("submit", () => {
+    const btn = document.getElementById("admin-wp-btn");
+    if (btn) { btn.disabled = true; btn.textContent = "Generating work profile (may take 1–2 min)…"; }
+  });
+</script>
+
+<section class="card">
+  <h2>At a glance</h2>
+  <ul class="source-list">
+    <li><span>Work profile</span> <em>{{ subject_row.work_profile_line or '—' }}</em></li>
+    <li><span>Network edges</span> <em>{{ subject_row.network_edges or 0 }}</em></li>
+    <li><span>Slack</span> <em>{% if subject_row.slack_connected %}connected{% elif subject_row.slack_bypassed %}bypass{% else %}—{% endif %}</em></li>
+    <li><span>Calendar</span> <em>{{ subject_row.calendar_status or '—' }}</em></li>
+    <li><span>LinkedIn</span> <em>{{ subject_row.linkedin_status or '—' }}</em></li>
+    <li><span>HiBob</span> <em>{{ subject_row.hibob_status or '—' }}</em></li>
+    <li><span>Knowledge base</span> <em>{{ subject_row.kb_status or '—' }}</em></li>
+    <li><span>User summary</span> <em>{% if subject_row.has_user_summary %}stored{% else %}—{% endif %}</em></li>
+    <li><span>Last job</span> <em>{{ subject_row.job_state or '—' }}</em></li>
+  </ul>
+</section>
+
+{% set net = subject.network_associations if subject.network_associations else {} %}
+{% set edges = net.get('edges') if net else None %}
+{% if edges %}
+<section class="card">
+  <h2>Meeting network</h2>
+  {% if net.get('window_days') %}
+  <p class="muted small">Window: {{ net.get('window_days') }} days</p>
+  {% endif %}
+  <ul class="small">
+    {% for edge in edges|sort(attribute='closeness_score', reverse=true) %}
+    <li>
+      <a class="btn-link" href="/admin/users/{{ edge.other_user_id }}">{{ edge.display_name or edge.email }}</a>
+      · score <strong>{{ edge.closeness_score }}</strong>
+      · {{ edge.meeting_count or 0 }} meetings
+      {% if edge.other_account_kind == 'provisional' %}<span class="muted"> · provisional</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if work_profile_json %}
+<section class="card">
+  <h2>Work profile</h2>
+  <pre class="json">{{ work_profile_json }}</pre>
+</section>
+{% endif %}
+
+{% if subject.llm_summary %}
+<section class="card">
+  <h2>Role brief</h2>
+  <pre class="summary">{{ subject.llm_summary }}</pre>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Stored record</h2>
+  <p class="muted small">Google/Slack OAuth tokens redacted.</p>
+  <details open>
+    <summary>Redacted JSON</summary>
+    <pre class="json">{{ payload_json }}</pre>
+  </details>
+</section>
+{% endblock %}

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}MTPI Profiles{% endblock %}</title>
+    <script>
+      (function () {
+        var k = "mtpi-theme";
+        var t = localStorage.getItem(k);
+        if (t !== "light" && t !== "dark") {
+          t = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.documentElement.setAttribute("data-theme", t);
+      })();
+    </script>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script src="/static/theme.js" defer></script>
+    {% block extra_head %}{% endblock %}
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/">MTPI Profiles</a>
+      {% set path = request.url.path %}
+      <nav class="topbar-nav" aria-label="Main">
+        <button type="button" class="btn ghost theme-toggle" id="theme-toggle" aria-pressed="false">
+          Theme
+        </button>
+        {% if user %}
+        <a class="btn{% if path == '/profile' %} primary{% endif %}" href="/profile">Profile</a>
+        {% if show_admin_nav %}
+        <a class="btn{% if path.startswith('/admin') %} primary{% endif %}" href="/admin">Admin</a>
+        {% endif %}
+        <form method="post" action="/auth/logout" class="nav-logout">
+          <button type="submit" class="btn ghost">Sign out</button>
+        </form>
+        {% else %}
+        <a class="btn primary" href="/auth/login">Sign in</a>
+        {% endif %}
+      </nav>
+    </header>
+    <main class="container">{% block content %}{% endblock %}</main>
+  </body>
+</html>

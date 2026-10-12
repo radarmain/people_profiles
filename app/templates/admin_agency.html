@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Admin — {{ agency.domain }}{% endblock %}
+{% block content %}
+<p class="small"><a class="btn-link" href="/admin">← Admin</a></p>
+<h1>{{ agency.display_name or agency.domain }}</h1>
+<p class="muted"><code>{{ agency.domain }}</code> · {{ agency.member_count }} member(s)</p>
+
+{% if agency.llm_summary %}
+<section class="card">
+  <h2>Agency summary</h2>
+  <pre class="summary">{{ agency.llm_summary }}</pre>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Members</h2>
+  {% if members %}
+  <ul class="small">
+    {% for m in members %}
+    <li><a href="/admin/users/{{ m.user_id }}">{{ m.display_name or m.email }}</a><span class="muted"> — {{ m.work_profile_line or 'no work profile' }}</span></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No linked members.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Stored record</h2>
+  <details open>
+    <summary>Agency JSON</summary>
+    <pre class="json">{{ payload_json }}</pre>
+  </details>
+</section>
+{% endblock %}

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Admin — MTP org{% endblock %}
+{% block content %}
+<section class="profile-header">
+  <div>
+    <h1>Organization admin</h1>
+    <p class="muted">Meet The People network · stored profiles (OAuth tokens redacted on detail views)</p>
+  </div>
+</section>
+
+<section class="stats-row">
+  <div class="stat"><span class="stat-n">{{ stats.user_count }}</span><span class="stat-l">Users</span></div>
+  <div class="stat"><span class="stat-n">{{ stats.agency_count }}</span><span class="stat-l">Agencies</span></div>
+  <div class="stat"><span class="stat-n">{{ stats.work_profiles }}</span><span class="stat-l">Work profiles</span></div>
+  <div class="stat"><span class="stat-n">{{ stats.calendar_enriched }}</span><span class="stat-l">Calendar OK</span></div>
+  <div class="stat"><span class="stat-n">{{ stats.provisional_users }}</span><span class="stat-l">Provisional</span></div>
+  {% if stats.jobs_failed %}<div class="stat warn"><span class="stat-n">{{ stats.jobs_failed }}</span><span class="stat-l">Jobs failed</span></div>{% endif %}
+</section>
+
+<section class="card">
+  <h2>Agencies <span class="muted small">working groups by email domain</span></h2>
+  {% if agency_rows %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Domain</th>
+          <th>Members</th>
+          <th>Summary</th>
+          <th>KB</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in agency_rows %}
+        <tr>
+          <td><strong>{{ row.display_name or row.domain }}</strong><br /><code class="small">{{ row.domain }}</code></td>
+          <td>{{ row.member_count }}</td>
+          <td>{% if row.has_agency_summary %}yes{% else %}—{% endif %}</td>
+          <td><span class="muted">{{ row.kb_status or '—' }}</span></td>
+          <td><a class="btn-link" href="/admin/agencies/{{ row.agency_id }}">View</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No agencies yet.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Users</h2>
+  {% if user_rows %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Person</th>
+          <th>Agency</th>
+          <th>Work profile</th>
+          <th>Network</th>
+          <th>Slack</th>
+          <th>Calendar</th>
+          <th>Job</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in user_rows %}
+        <tr>
+          <td>
+            <strong>{{ row.display_name or row.email }}</strong>
+            {% if row.account_kind == 'provisional' %}<span class="muted small"> · provisional</span>{% endif %}<br />
+            <span class="muted small">{{ row.email }}</span>
+          </td>
+          <td><code>{{ row.agency_id or '—' }}</code></td>
+          <td class="small">{{ row.work_profile_line or '—' }}</td>
+          <td>{{ row.network_edges or 0 }}</td>
+          <td>{% if row.slack_connected %}ok{% elif row.slack_bypassed %}bypass{% else %}—{% endif %}</td>
+          <td class="small">{{ row.calendar_status or '—' }}</td>
+          <td class="small {% if row.job_state == 'failed' %}warn-text{% endif %}">{{ row.job_state or '—' }}</td>
+          <td><a class="btn-link" href="/admin/users/{{ row.user_id }}">View</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No users yet.</p>
+  {% endif %}
+</section>
+
+<p class="muted small">Storage: {{ storage_backend }}</p>
+{% endblock %}

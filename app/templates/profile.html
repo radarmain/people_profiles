@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+{% block title %}Your profile{% endblock %}
+{% block extra_head %}
+{% if user.processing_status and user.processing_status.get('state') in ['queued', 'running'] %}
+<meta http-equiv="refresh" content="5" />
+{% endif %}
+{% endblock %}
+{% block content %}
+<section class="profile-header">
+  {% if user.picture_url %}
+  <img class="avatar" src="{{ user.picture_url }}" alt="" />
+  {% endif %}
+  <div>
+    <h1>{{ user.display_name or user.email }}</h1>
+    <p class="muted">{{ user.email }} · agency <code>{{ user.agency_id }}</code></p>
+  </div>
+</section>
+
+{% if job_error %}
+<p class="notice error">Role analysis failed: {{ job_error }}</p>
+{% elif job_notice == 'summarize' %}
+<p class="notice ok">Role analysis finished. Review your work profile below.</p>
+{% endif %}
+
+{% if user.processing_status and user.processing_status.get('state') %}
+<p class="muted small">
+  Job <strong>{{ user.processing_status.get('job_type') }}</strong>:
+  {{ user.processing_status.get('state') }}
+  {% if user.processing_status.get('updated_at') %} · {{ user.processing_status.get('updated_at') }}{% endif %}
+  {% if user.processing_status.get('detail') %} — {{ user.processing_status.get('detail') }}{% endif %}
+  {% if user.processing_status.get('state') in ['queued', 'running'] %} · auto-refreshing every 5s{% endif %}
+</p>
+{% endif %}
+
+<div class="actions">
+  <form method="post" action="/profile/refresh"><button class="btn">Refresh enrichment</button></form>
+  <form method="post" action="/profile/summary" id="summarize-form">
+    <button class="btn primary" type="submit" id="summarize-btn">Analyze role &amp; generate summaries</button>
+  </form>
+  <script>
+    document.getElementById("summarize-form")?.addEventListener("submit", () => {
+      const btn = document.getElementById("summarize-btn");
+      if (btn) { btn.disabled = true; btn.textContent = "Analyzing role (may take 1–2 min)…"; }
+    });
+  </script>
+  <a class="btn" href="/auth/google/relink">Re-link Google</a>
+</div>
+{% if user.google.get('people', {}).get('status') in ['reauth_required', 'no_token'] or user.google.get('calendar', {}).get('status') == 'reauth_required' %}
+<p class="muted small">Google needs updated consent for People and/or Calendar. Click <strong>Re-link Google</strong>, then <strong>Refresh enrichment</strong>.</p>
+{% endif %}
+
+{% set wp = user.work_profile if user.work_profile else {} %}
+<section class="card highlight">
+  <h2>Work profile <span class="muted small">(for workflow routing)</span></h2>
+  {% if wp and (wp.get('status') or wp.get('primary_role_label') or wp.get('function')) %}
+  <p class="lead">
+    {% if wp.get('primary_role_label') %}<strong>{{ wp.primary_role_label }}</strong>{% else %}<em>Role unclear</em>{% endif %}
+    {% if wp.get('function') and wp.get('function') != 'unknown' %} · {{ wp.get('function') | replace('_', ' ') }}{% endif %}
+    {% if wp.get('seniority') and wp.get('seniority') != 'unknown' %} · {{ wp.get('seniority') | replace('_', ' ') }}{% endif %}
+    {% if wp.get('confidence') is not none %} · confidence {{ wp.confidence }}{% endif %}
+  </p>
+  {% if wp.get('work_focus_phrases') %}
+  <p class="small"><strong>Focus:</strong> {{ wp.work_focus_phrases | join(' · ') }}</p>
+  {% endif %}
+  {% if wp.get('suggested_workflows') %}
+  <p class="small"><strong>Suggested workflows:</strong>
+    {% for w in wp.suggested_workflows %}<code>{{ w }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+  </p>
+  {% endif %}
+  {% if wp.get('reasoning') %}<p class="muted small">{{ wp.reasoning }}</p>{% endif %}
+  {% if wp.get('evidence_gaps') %}
+  <p class="muted small">Gaps: {{ wp.evidence_gaps | join(' · ') }}</p>
+  {% endif %}
+  {% if user.work_profile_generated_at %}
+  <p class="muted small">Inferred {{ user.work_profile_generated_at }}{% if wp.get('method') %} · {{ wp.method }}{% endif %}</p>
+  {% endif %}
+  {% else %}
+  <p class="muted">No work profile yet. Run <strong>Analyze role &amp; generate summaries</strong> after enrichment (Slack title and LinkedIn help most).</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Role &amp; work brief</h2>
+  {% if user.llm_summary %}
+  <pre class="summary">{{ user.llm_summary }}</pre>
+  {% if user.llm_summary_generated_at %}
+  <p class="muted small">Generated {{ user.llm_summary_generated_at }}</p>
+  {% endif %}
+  {% else %}
+  <p class="muted">No user summary on this profile record yet. Use <strong>Generate user &amp; agency summaries</strong> above (wait for the summarize job to finish if offloaded).</p>
+  {% endif %}
+</section>
+
+{% if agency %}
+<section class="card">
+  <h2>Agency LLM summary ({{ agency.domain }})</h2>
+  <p class="small muted">{{ agency.display_name }} — {{ agency.member_count }} member(s) in this app</p>
+  {% if agency.llm_summary %}
+  <pre class="summary">{{ agency.llm_summary }}</pre>
+  {% if agency.llm_summary_generated_at %}
+  <p class="muted small">Generated {{ agency.llm_summary_generated_at }}</p>
+  {% endif %}
+  {% else %}
+  <p class="muted">No agency summary stored yet. Generate summaries with the button above.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if snapshot.slack %}
+<section class="card">
+  <h2>Slack footprint</h2>
+  <p>
+    <strong>{{ snapshot.slack.workspace or 'Workspace' }}</strong>
+    {% if snapshot.slack.title %} · {{ snapshot.slack.title }}{% endif %}
+    {% if snapshot.slack.timezone %} · {{ snapshot.slack.timezone }}{% endif %}
+  </p>
+  {% if snapshot.slack.public_channels_member_sample %}
+  <p class="small muted">Public channels (sample):</p>
+  <p>{% for c in snapshot.slack.public_channels_member_sample %}#{{ c }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+  {% endif %}
+  {% if snapshot.slack.channel_topics_sample %}
+  <ul class="small">
+    {% for item in snapshot.slack.channel_topics_sample %}
+    <li><strong>#{{ item.channel }}</strong> — {{ item.topic }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if network_edges %}
+<section class="card highlight">
+  <h2>Meeting network <span class="muted small">(closeness 1–100)</span></h2>
+  {% if network_window_days %}
+  <p class="muted small">Based on the last {{ network_window_days }} days of calendar meetings.</p>
+  {% endif %}
+  <ul class="small">
+    {% for edge in network_edges %}
+    <li>
+      <strong>{{ edge.display_name or edge.email }}</strong>
+      · score <strong>{{ edge.closeness_score }}</strong>
+      · {{ edge.meeting_count or 0 }} meetings
+      {% if edge.other_account_kind == 'provisional' %}<span class="muted"> · provisional</span>{% endif %}
+      {% if show_admin_nav and edge.other_user_id %}
+      · <a class="btn-link" href="/admin/users/{{ edge.other_user_id }}">View</a>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if snapshot.google.calendar %}
+<section class="card">
+  <h2>Calendar meeting partners</h2>
+  <p class="small muted">
+    Last {{ snapshot.google.calendar.lookback_days or '—' }} days ·
+    {{ snapshot.google.calendar.events_with_other_attendees or 0 }} meetings with others ·
+    {{ snapshot.google.calendar.unique_other_attendees or 0 }} unique attendees
+  </p>
+  {% if snapshot.google.calendar.top_attendees %}
+  <ul class="small">
+    {% for att in snapshot.google.calendar.top_attendees %}
+    <li>
+      {{ att.display_name or att.email }}
+      {% if att.mtp_user_id %}<span class="muted"> · in MTP</span>{% endif %}
+      — {{ att.meeting_count }} meetings{% if att.estimated_minutes %} (~{{ att.estimated_minutes }} min){% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  <p class="muted small">Event titles are not stored — only attendee aggregates for privacy.</p>
+</section>
+{% elif user.google.get('calendar', {}).get('status') == 'forbidden' %}
+<p class="muted small">Calendar: enable <strong>Google Calendar API</strong> in GCP, then Re-link Google.</p>
+{% endif %}
+
+{% if snapshot.google.organizations or snapshot.google.bio %}
+<section class="card">
+  <h2>Google profile</h2>
+  {% if snapshot.google.workspace_domain_hint %}
+  <p class="small">Workspace domain: <code>{{ snapshot.google.workspace_domain_hint }}</code></p>
+  {% endif %}
+  {% if snapshot.google.bio %}<p>{{ snapshot.google.bio }}</p>{% endif %}
+  {% if snapshot.google.organizations %}
+  <ul>
+    {% for org in snapshot.google.organizations %}
+    <li>{{ org.title or '—' }} @ {{ org.name or '—' }}{% if org.department %} ({{ org.department }}){% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if snapshot.google.people_api_status and snapshot.google.people_api_status != 'ok' %}
+  <p class="muted small">People API: {{ snapshot.google.people_api_status }} — enable People API and sign in again.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if snapshot.linkedin %}
+<section class="card">
+  <h2>LinkedIn lookup</h2>
+  <p class="small muted">
+    Status: {{ snapshot.linkedin.status }}
+    {% if snapshot.linkedin.confidence is not none %} · confidence {{ snapshot.linkedin.confidence }}{% endif %}
+  </p>
+  {% if snapshot.linkedin.profile_url %}
+  <p><a href="{{ snapshot.linkedin.profile_url }}" target="_blank" rel="noopener">{{ snapshot.linkedin.profile_url }}</a></p>
+  {% endif %}
+  {% if snapshot.linkedin.title %}<p><strong>{{ snapshot.linkedin.title }}</strong></p>{% endif %}
+  {% if snapshot.linkedin.summary %}<pre class="summary">{{ snapshot.linkedin.summary }}</pre>{% endif %}
+  {% if snapshot.linkedin.disambiguation_reasoning %}
+  <p class="muted small">{{ snapshot.linkedin.disambiguation_reasoning }}</p>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if snapshot.knowledge_base and snapshot.knowledge_base.status != 'not_configured' %}
+<section class="card">
+  <h2>Knowledge base</h2>
+  <p class="small muted">
+    Status: {{ snapshot.knowledge_base.status }}
+    {% if user.knowledge_base.search_mode %} · search: {{ user.knowledge_base.search_mode }}{% endif %}
+    {% if snapshot.knowledge_base.queries %} · queries: {{ snapshot.knowledge_base.queries | join(', ') }}{% endif %}
+  </p>
+  {% if snapshot.knowledge_base.snippets %}
+  <ul class="small">
+    {% for snip in snapshot.knowledge_base.snippets %}
+    {% set kb_text = snip.text or '' %}
+    <li>
+      <span class="muted">score {{ snip.score }}</span>
+      {{ kb_text[:280] }}{% if kb_text|length > 280 %}…{% endif %}
+      {% if snip.source_uri %}<br /><span class="muted">{{ snip.source_uri }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No matching chunks returned.</p>
+  {% endif %}
+  {% if snapshot.knowledge_base.errors %}
+  <p class="muted small">{{ snapshot.knowledge_base.errors | join(' · ') }}</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="grid two">
+  <div class="card">
+    <h2>Sources</h2>
+    <ul class="source-list">
+      <li><span>Google</span> <em>connected</em></li>
+      <li><span>Calendar</span> <em>{{ user.google.get('calendar', {}).get('status', 'pending') if user.google else 'pending' }}</em></li>
+      <li><span>Slack</span> {% if user.slack_connected %}<em>connected</em>{% else %}<em>missing</em>{% endif %}</li>
+      <li><span>HiBob</span> <em>{{ user.hibob.get('status', 'loaded') if user.hibob else 'empty' }}</em></li>
+      <li><span>Knowledge base</span> <em>{{ user.knowledge_base.get('status', 'empty') if user.knowledge_base else 'empty' }}</em></li>
+      <li><span>LinkedIn</span> <em>{{ user.linkedin.get('status', 'empty') if user.linkedin else 'empty' }}</em></li>
+      <li><span>Internal</span> <em>{{ user.internal.get('tools', {}).get('status', 'stub') }}</em></li>
+    </ul>
+  </div>
+  {% if agency %}
+  <div class="card">
+    <h2>Agency signals ({{ agency.domain }})</h2>
+    {% if agency.inferred and agency.inferred.top_departments %}
+    <p class="small muted">Top departments (from HiBob fields):</p>
+    <ul>
+      {% for name, count in agency.inferred.top_departments %}
+      <li>{{ name }} ({{ count }})</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if agency.knowledge_base and agency.knowledge_base.status not in ['not_configured', ''] %}
+    <p class="small muted">Agency KB: {{ agency.knowledge_base.status }}</p>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Raw profile JSON</h2>
+  <details>
+    <summary>User payload</summary>
+    <pre class="json">{{ user.model_dump_json(indent=2) }}</pre>
+  </details>
+  {% if agency %}
+  <details>
+    <summary>Agency payload</summary>
+    <pre class="json">{{ agency.model_dump_json(indent=2) }}</pre>
+  </details>
+  {% endif %}
+</section>
+
+<p class="muted small">
+  Profile storage: {{ storage_backend }}
+  {% if dynamodb_target %} · {{ dynamodb_target }} DynamoDB{% endif %}
+  {% if dynamodb_users_table %} · table <code>{{ dynamodb_users_table }}</code>{% endif %}
+</p>
+{% endblock %}

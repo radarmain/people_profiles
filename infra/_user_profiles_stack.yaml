@@ -1,0 +1,147 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "_user_profiles — DynamoDB, SQS job queue, Lambda worker"
+
+Parameters:
+  ProjectPrefix:
+    Type: String
+    Default: _user_profiles
+  AwsRegion:
+    Type: String
+    Default: us-east-1
+  LambdaS3Bucket:
+    Type: String
+    Description: S3 bucket containing the worker deployment zip
+  LambdaS3Key:
+    Type: String
+    Default: _user_profiles_worker.zip
+  LambdaMemoryMb:
+    Type: Number
+    Default: 1024
+  LambdaTimeoutSec:
+    Type: Number
+    Default: 900
+
+Resources:
+  UserProfilesUsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectPrefix}_users"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: email-index
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  UserProfilesAgenciesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectPrefix}_agencies"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: agency_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: agency_id
+          KeyType: HASH
+
+  UserProfilesJobsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${ProjectPrefix}_jobs"
+      VisibilityTimeout: 960
+      MessageRetentionPeriod: 1209600
+
+  UserProfilesWorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectPrefix}_worker_role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: !Sub "${ProjectPrefix}_worker_policy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:Query
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !GetAtt UserProfilesUsersTable.Arn
+                  - !Sub "${UserProfilesUsersTable.Arn}/index/*"
+                  - !GetAtt UserProfilesAgenciesTable.Arn
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt UserProfilesJobsQueue.Arn
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:Converse
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - bedrock:Retrieve
+                Resource: "*"
+
+  UserProfilesWorkerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectPrefix}_worker"
+      Role: !GetAtt UserProfilesWorkerRole.Arn
+      Runtime: python3.12
+      Handler: handler.handler
+      MemorySize: !Ref LambdaMemoryMb
+      Timeout: !Ref LambdaTimeoutSec
+      Code:
+        S3Bucket: !Ref LambdaS3Bucket
+        S3Key: !Ref LambdaS3Key
+      Environment:
+        Variables:
+          STORAGE_BACKEND: dynamodb
+          DYNAMODB_USERS_TABLE: !Sub "${ProjectPrefix}_users"
+          DYNAMODB_AGENCIES_TABLE: !Sub "${ProjectPrefix}_agencies"
+
+  UserProfilesWorkerEventSource:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 1
+      Enabled: true
+      EventSourceArn: !GetAtt UserProfilesJobsQueue.Arn
+      FunctionName: !Ref UserProfilesWorkerFunction
+
+Outputs:
+  UserProfilesJobsQueueUrl:
+    Value: !Ref UserProfilesJobsQueue
+    Export:
+      Name: user-profiles-jobs-queue-url
+  UserProfilesWorkerFunctionName:
+    Value: !Ref UserProfilesWorkerFunction
+    Export:
+      Name: user-profiles-worker-function-name
+  UserProfilesUsersTableName:
+    Value: !Ref UserProfilesUsersTable
+  UserProfilesAgenciesTableName:
+    Value: !Ref UserProfilesAgenciesTable

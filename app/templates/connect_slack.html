@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Connect Slack{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Connect Slack</h1>
+  <p>
+    We use Slack to enrich your profile (display name, title, timezone, workspace). You can connect
+    now or bypass while you adjust Slack app permissions.
+  </p>
+  <p>Signed in as <strong>{{ user.email }}</strong></p>
+  <p class="note small muted">
+    If Slack shows <em>redirect_uri did not match</em>, add this exact URL under your Slack app
+    → <strong>OAuth &amp; Permissions</strong> → <strong>Redirect URLs</strong> (then Save):
+  </p>
+  <pre class="summary">{{ slack_redirect_uri }}</pre>
+  <div class="actions">
+    <a class="btn primary" href="/auth/slack/connect">Connect Slack account</a>
+    <form method="post" action="/auth/slack/bypass">
+      <button type="submit" class="btn">Bypass Slack connect (for now)</button>
+    </form>
+  </div>
+</section>
+{% endblock %}
