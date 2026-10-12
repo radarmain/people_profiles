@@ -2,7 +2,9 @@
 
 ## Purpose
 
-Match the signed-in user to an employee record in Bob (HiBob) using work email.
+Match a user to an employee record in Bob (HiBob) using work email.
+
+**Read-only:** this app only calls `POST /v1/people/search`. It never creates, updates, or deletes employees or any other HiBob resources. (`POST` here is HiBob’s search/read convention, not a write.)
 
 ## Authentication
 
@@ -27,11 +29,11 @@ If either credential is empty, enrichment sets `hibob.status = not_configured` a
 
 Code: `app/services/hibob.py`
 
-- `POST /v1/people/search`
+- `POST /v1/people/search` with `humanReadable: APPEND` (so title/department are labels, not named-list IDs)
 - Filter: `root.email` equals user email
 - Fields: name, email, title, department, site, start date, reports-to
 
-Response is normalized to `hibob.normalized` for rollups and LLM context.
+Response is normalized to `hibob.normalized` for rollups, identity matching, and LLM context.
 
 ## Permissions
 
