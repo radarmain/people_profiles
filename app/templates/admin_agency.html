@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Admin — {{ agency.domain }}{% endblock %}
 {% block content %}
-<p class="small"><a class="btn-link" href="/admin">← Admin</a></p>
+{% include "partials/breadcrumbs.html" %}
 <h1>{{ agency.display_name or agency.domain }}</h1>
+<div class="admin-tabs">{% include "partials/admin_tabs.html" %}</div>
 <p class="muted"><code>{{ agency.domain }}</code> · {{ agency.member_count }} member(s)</p>
 
 {% if agency.llm_summary %}

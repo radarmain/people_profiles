@@ -27,6 +27,21 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 templates = Jinja2Templates(directory="app/templates")
 
 
+def _admin_context(
+    request: Request,
+    *,
+    active_tab: str,
+    breadcrumbs: list[dict[str, str]],
+    **extra,
+):
+    return page_context(
+        request,
+        active_admin_tab=active_tab,
+        breadcrumbs=breadcrumbs,
+        **extra,
+    )
+
+
 @router.get("", response_class=HTMLResponse)
 async def admin_home(request: Request, user: UserProfile = Depends(require_admin)):
     store = get_store()
@@ -37,7 +52,7 @@ async def admin_home(request: Request, user: UserProfile = Depends(require_admin
     core_profiles = store.list_core_profiles(core_query)
     return templates.TemplateResponse(
         request,
-        "admin.html",
+        "admin_dashboard.html",
         page_context(
             request,
             admin_user=user,
@@ -53,6 +68,100 @@ async def admin_home(request: Request, user: UserProfile = Depends(require_admin
     )
 
 
+@router.get("/users", response_class=HTMLResponse)
+async def admin_users(request: Request, user: UserProfile = Depends(require_admin)):
+    query = request.query_params.get("q", "")
+    users = get_store().list_users()
+    needle = query.strip().lower()
+    if needle:
+        users = [
+            item for item in users
+            if needle in f"{item.email} {item.display_name or ''} {item.email_domain}".lower()
+        ]
+    return templates.TemplateResponse(
+        request,
+        "admin_users.html",
+        _admin_context(
+            request,
+            active_tab="users",
+            breadcrumbs=[
+                {"label": "Admin", "url": "/admin"},
+                {"label": "Users", "url": "/admin/users"},
+            ],
+            admin_user=user,
+            query=query,
+            user_rows=[user_admin_row(item) for item in users],
+        ),
+    )
+
+
+@router.get("/agencies", response_class=HTMLResponse)
+async def admin_agencies(request: Request, user: UserProfile = Depends(require_admin)):
+    return templates.TemplateResponse(
+        request,
+        "admin_agencies.html",
+        _admin_context(
+            request,
+            active_tab="agencies",
+            breadcrumbs=[
+                {"label": "Admin", "url": "/admin"},
+                {"label": "Agencies", "url": "/admin/agencies"},
+            ],
+            admin_user=user,
+            agency_rows=[agency_admin_row(item) for item in get_store().list_agencies()],
+        ),
+    )
+
+
+@router.get("/core-profiles", response_class=HTMLResponse)
+async def admin_core_profiles(request: Request, user: UserProfile = Depends(require_admin)):
+    query = request.query_params.get("q", "")
+    return templates.TemplateResponse(
+        request,
+        "admin_core_profiles.html",
+        _admin_context(
+            request,
+            active_tab="core",
+            breadcrumbs=[
+                {"label": "Admin", "url": "/admin"},
+                {"label": "Core profiles", "url": "/admin/core-profiles"},
+            ],
+            admin_user=user,
+            query=query,
+            core_profiles=get_store().list_core_profiles(query),
+            core_sync_notice=request.query_params.get("core_sync"),
+            core_sync_error=request.query_params.get("core_sync_error"),
+        ),
+    )
+
+
+@router.get("/generated-profiles", response_class=HTMLResponse)
+async def admin_generated_profiles(request: Request, user: UserProfile = Depends(require_admin)):
+    query = request.query_params.get("q", "")
+    users = get_store().list_users()
+    needle = query.strip().lower()
+    if needle:
+        users = [
+            item for item in users
+            if needle in f"{item.email} {item.display_name or ''} {item.email_domain}".lower()
+        ]
+    return templates.TemplateResponse(
+        request,
+        "admin_generated_profiles.html",
+        _admin_context(
+            request,
+            active_tab="generated",
+            breadcrumbs=[
+                {"label": "Admin", "url": "/admin"},
+                {"label": "Generated profiles", "url": "/admin/generated-profiles"},
+            ],
+            admin_user=user,
+            query=query,
+            user_rows=[user_admin_row(item) for item in users],
+        ),
+    )
+
+
 @router.post("/core-profiles/sync")
 async def admin_sync_core_profiles(
     request: Request,
@@ -60,13 +169,43 @@ async def admin_sync_core_profiles(
 ):
     try:
         count = await sync_core_profiles(get_store(), get_settings())
-        return RedirectResponse(url=f"/admin?core_sync={count}", status_code=303)
+        return RedirectResponse(url=f"/admin/core-profiles?core_sync={count}", status_code=303)
     except Exception as exc:  # noqa: BLE001
         logger.exception("Core profile sync failed for %s", admin.email)
         return RedirectResponse(
-            url=f"/admin?core_sync_error={quote(str(exc)[:500])}",
+            url=f"/admin/core-profiles?core_sync_error={quote(str(exc)[:500])}",
             status_code=303,
         )
+
+
+@router.get("/core-profiles/{core_id}", response_class=HTMLResponse)
+async def admin_core_profile_detail(
+    core_id: str,
+    request: Request,
+    admin: UserProfile = Depends(require_admin),
+):
+    store = get_store()
+    profile = next((item for item in store.list_core_profiles() if item.core_id == core_id), None)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Core profile not found")
+    generated = store.get_user_by_email(profile.email)
+    return templates.TemplateResponse(
+        request,
+        "admin_core_profile.html",
+        _admin_context(
+            request,
+            active_tab="core",
+            breadcrumbs=[
+                {"label": "Admin", "url": "/admin"},
+                {"label": "Core profiles", "url": "/admin/core-profiles"},
+                {"label": profile.display_name or profile.email, "url": request.url.path},
+            ],
+            admin_user=admin,
+            profile=profile,
+            generated_user=generated,
+            raw_json=json.dumps(profile.raw, indent=2, default=str),
+        ),
+    )
 
 
 @router.get("/users/{user_id}", response_class=HTMLResponse)
@@ -85,8 +224,14 @@ async def admin_user_detail(
     return templates.TemplateResponse(
         request,
         "admin_user.html",
-        page_context(
+        _admin_context(
             request,
+            active_tab="generated",
+            breadcrumbs=[
+                {"label": "Admin", "url": "/admin"},
+                {"label": "Generated profiles", "url": "/admin/generated-profiles"},
+                {"label": subject.display_name or subject.email, "url": request.url.path},
+            ],
             admin_user=admin,
             subject=subject,
             subject_row=user_admin_row(subject),
@@ -187,8 +332,14 @@ async def admin_agency_detail(
     return templates.TemplateResponse(
         request,
         "admin_agency.html",
-        page_context(
+        _admin_context(
             request,
+            active_tab="agencies",
+            breadcrumbs=[
+                {"label": "Admin", "url": "/admin"},
+                {"label": "Agencies", "url": "/admin/agencies"},
+                {"label": agency.display_name or agency.domain, "url": request.url.path},
+            ],
             admin_user=admin,
             agency=agency,
             agency_row=agency_admin_row(agency),

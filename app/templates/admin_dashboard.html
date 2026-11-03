@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Admin workspace{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div>
+    <p class="eyebrow">Workspace</p>
+    <h1>Admin overview</h1>
+    <p class="muted">Monitor identity records, source data, and generated profile output.</p>
+  </div>
+</div>
+<div class="admin-tabs">
+  {% include "partials/admin_tabs.html" %}
+</div>
+<section class="metric-grid">
+  <a class="metric-card" href="/admin/users"><span class="metric-label">Users</span><strong>{{ stats.user_count }}</strong><span class="muted">Identity records</span></a>
+  <a class="metric-card" href="/admin/agencies"><span class="metric-label">Agencies</span><strong>{{ stats.agency_count }}</strong><span class="muted">Organization groups</span></a>
+  <a class="metric-card" href="/admin/core-profiles"><span class="metric-label">Core profiles</span><strong>{{ core_profile_count }}</strong><span class="muted">HiBob source records</span></a>
+  <a class="metric-card" href="/admin/generated-profiles"><span class="metric-label">Generated profiles</span><strong>{{ stats.work_profiles }}</strong><span class="muted">Profiles with output</span></a>
+</section>
+<section class="workspace-panel">
+  <div class="panel-heading"><div><p class="eyebrow">Recent activity</p><h2>Recently added users</h2></div><a class="btn-link" href="/admin/users">View all</a></div>
+  {% if recent_users %}
+  <div class="compact-list">
+    {% for row in recent_users %}
+    <a class="compact-list-row" href="/admin/users/{{ row.user_id }}">
+      <span><strong>{{ row.display_name or row.email }}</strong><small>{{ row.email }}</small></span>
+      <span class="status-badge">{{ row.account_kind }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}<div class="empty-state">No users yet.</div>{% endif %}
+</section>
+{% endblock %}

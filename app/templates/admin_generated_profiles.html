@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Generated profiles — Admin{% endblock %}
+{% block content %}
+{% include "partials/breadcrumbs.html" %}
+<div class="page-heading"><div><p class="eyebrow">Admin / Generated profiles</p><h1>Generated profiles</h1><p class="muted">Enrichment, summaries, role signals, and generated output.</p></div></div>
+<div class="admin-tabs">{% include "partials/admin_tabs.html" %}</div>
+<form class="search-bar" method="get"><input name="q" value="{{ query }}" placeholder="Search name, email, or domain" /><button class="btn" type="submit">Search</button></form>
+<section class="workspace-panel"><div class="panel-heading"><h2>{{ user_rows|length }} profiles</h2></div>
+{% if user_rows %}<div class="data-table-wrap"><table class="data-table"><thead><tr><th>Profile</th><th>Work profile</th><th>Summary</th><th>Job</th><th></th></tr></thead><tbody>
+{% for row in user_rows %}<tr><td><a class="table-primary" href="/admin/users/{{ row.user_id }}">{{ row.display_name or row.email }}</a><small>{{ row.email }}</small></td><td>{{ row.work_profile_line or 'Not generated' }}</td><td>{{ 'Available' if row.has_user_summary else 'Not generated' }}</td><td>{{ row.job_state or '—' }}</td><td><a class="btn-link" href="/admin/users/{{ row.user_id }}">Open</a></td></tr>{% endfor %}
+</tbody></table></div>{% else %}<div class="empty-state">No generated profiles found.</div>{% endif %}</section>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Users — Admin{% endblock %}
+{% block content %}
+{% include "partials/breadcrumbs.html" %}
+<div class="page-heading"><div><p class="eyebrow">Admin / Users</p><h1>Users</h1><p class="muted">Identity, access, and connection records.</p></div></div>
+<div class="admin-tabs">{% include "partials/admin_tabs.html" %}</div>
+<form class="search-bar" method="get"><input name="q" value="{{ query }}" placeholder="Search name, email, or domain" /><button class="btn" type="submit">Search</button></form>
+<section class="workspace-panel">
+  <div class="panel-heading"><h2>{{ user_rows|length }} users</h2></div>
+  {% if user_rows %}
+  <div class="data-table-wrap"><table class="data-table"><thead><tr><th>User</th><th>Type</th><th>Slack</th><th>Calendar</th><th></th></tr></thead><tbody>
+  {% for row in user_rows %}<tr><td><a class="table-primary" href="/admin/users/{{ row.user_id }}">{{ row.display_name or row.email }}</a><small>{{ row.email }}</small></td><td><span class="status-badge">{{ row.account_kind }}</span></td><td>{{ 'Connected' if row.slack_connected else 'Not connected' }}</td><td>{{ row.calendar_status or '—' }}</td><td><a class="btn-link" href="/admin/users/{{ row.user_id }}">Open</a></td></tr>{% endfor %}
+  </tbody></table></div>
+  {% else %}<div class="empty-state">No matching users.</div>{% endif %}
+</section>
+{% endblock %}

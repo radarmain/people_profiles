@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Agencies — Admin{% endblock %}
+{% block content %}
+{% include "partials/breadcrumbs.html" %}
+<div class="page-heading"><div><p class="eyebrow">Admin / Agencies</p><h1>Agencies</h1><p class="muted">Groups organized by email domain.</p></div></div>
+<div class="admin-tabs">{% include "partials/admin_tabs.html" %}</div>
+<section class="workspace-panel">
+  <div class="panel-heading"><h2>{{ agency_rows|length }} agencies</h2></div>
+  {% if agency_rows %}<div class="data-table-wrap"><table class="data-table"><thead><tr><th>Agency</th><th>Members</th><th>Summary</th><th></th></tr></thead><tbody>
+  {% for row in agency_rows %}<tr><td><a class="table-primary" href="/admin/agencies/{{ row.agency_id }}">{{ row.display_name or row.domain }}</a><small>{{ row.domain }}</small></td><td>{{ row.member_count }}</td><td>{{ 'Available' if row.has_agency_summary else 'Not generated' }}</td><td><a class="btn-link" href="/admin/agencies/{{ row.agency_id }}">Open</a></td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<div class="empty-state">No agencies yet.</div>{% endif %}
+</section>
+{% endblock %}

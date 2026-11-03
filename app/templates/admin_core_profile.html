@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{{ profile.display_name or profile.email }} — Core profile{% endblock %}
+{% block content %}
+{% include "partials/breadcrumbs.html" %}
+<div class="page-heading"><div><p class="eyebrow">Core profile</p><h1>{{ profile.display_name or profile.email }}</h1><p class="muted">{{ profile.email }} · Last synced {{ profile.synced_at }}</p></div>{% if generated_user %}<a class="btn" href="/admin/users/{{ generated_user.user_id }}">View generated profile</a>{% endif %}</div>
+<div class="admin-tabs">{% include "partials/admin_tabs.html" %}</div>
+<div class="detail-grid">
+  <section class="workspace-panel"><div class="panel-heading"><h2>HiBob source</h2><span class="status-badge success">Synced</span></div><dl class="detail-list">
+    <div><dt>Title</dt><dd>{{ profile.title or '—' }}</dd></div><div><dt>Department</dt><dd>{{ profile.department or '—' }}</dd></div><div><dt>Site</dt><dd>{{ profile.site or '—' }}</dd></div><div><dt>Manager</dt><dd>{{ profile.manager_name or '—' }}</dd></div><div><dt>Start date</dt><dd>{{ profile.start_date or '—' }}</dd></div>
+  </dl></section>
+  <section class="workspace-panel"><div class="panel-heading"><h2>Source record</h2></div><details><summary>View raw HiBob data</summary><pre class="json">{{ raw_json }}</pre></details></section>
+</div>
+{% endblock %}

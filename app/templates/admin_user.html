@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Admin — {{ subject.display_name or subject.email }}{% endblock %}
 {% block content %}
-<p class="small"><a class="btn-link" href="/admin">← Admin</a></p>
+{% include "partials/breadcrumbs.html" %}
 <h1>{{ subject.display_name or subject.email }}</h1>
+<div class="admin-tabs">{% include "partials/admin_tabs.html" %}</div>
 <p class="muted">
   {{ subject.email }} · agency <code>{{ subject.agency_id }}</code>
   · {{ subject.account_kind }}
