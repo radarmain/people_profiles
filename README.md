@@ -1,15 +1,16 @@
-# MTPI User Profiles (PoC)
+# Generated profiles
 
 **Documentation:** [docs/README.md](./docs/README.md) — architecture, integrations, configuration, and operations.
 
 Single sign-on hub that:
 
 1. Authenticates users with **Google OAuth**
-2. **Requires Slack** connection for profile enrichment
-3. Enriches from **HiBob** (company directory) and a stub **internal tools** hook
-4. Groups users into an **agency profile** by email domain
-5. Retrieves **Bedrock Knowledge Base** chunks about the user (email, name, domain, role signals)
-6. Generates an **LLM summary** (Amazon Bedrock via AWS profile `concrete`, with a local fallback)
+2. Restricts access to an allowlist of approved email addresses
+3. **Requires Slack** connection for profile enrichment
+4. Uses HiBob-backed **Core profiles** as the source for new users
+5. Enriches **Generated profiles** from Google, Slack, HiBob, and internal tools
+6. Groups users into an **agency profile** by email domain
+7. Retrieves **Bedrock Knowledge Base** chunks and generates an LLM summary
 
 Built with **FastAPI**; storage is **local JSON** by default or **DynamoDB** when you switch backends.
 
@@ -21,11 +22,14 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 cp .env.example .env
-# Edit .env: APP_SECRET_KEY, GOOGLE_*, SLACK_*, optional HIBOB_*
+# Edit .env: APP_SECRET_KEY, ALLOWED_EMAILS, GOOGLE_*, SLACK_*, optional HIBOB_*
 uvicorn app.main:app --reload --port 8080
 ```
 
 Open [http://127.0.0.1:8080](http://127.0.0.1:8080).
+
+External consumers use `/api/v1` with `X-API-Key` or `Authorization: Bearer`; keys
+are configured in `EXTERNAL_API_KEYS`.
 
 ### Google OAuth
 

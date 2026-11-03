@@ -7,6 +7,7 @@ from app.services.agency import ensure_user_agency
 from app.services.calendar_network_sync import sync_calendar_network
 from app.services.google_enrichment import enrich_google
 from app.services.hibob import HiBobClient
+from app.services.identity_resolve import resolve_identity_name
 from app.services.linkedin_lookup import enrich_linkedin
 from app.services.internal_tools import enrich_from_internal_tools
 from app.services.safe_dict import as_dict, normalize_user_blobs
@@ -63,6 +64,11 @@ async def _enrich_shared_sources(store: ProfileStore, settings: Settings, user: 
         user.knowledge_base = {"status": "not_configured"}
 
     agency = store.get_agency(user.agency_id) if user.agency_id else None
+    # Resolve full name before LinkedIn so Jeff≠John style mismatches are gated.
+    try:
+        await resolve_identity_name(settings, user)
+    except Exception:  # noqa: BLE001
+        pass
     try:
         user.linkedin = await enrich_linkedin(settings, user, agency)
     except Exception as exc:  # noqa: BLE001

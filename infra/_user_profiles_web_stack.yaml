@@ -1,0 +1,263 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Generated profiles web app on ECS Fargate behind an HTTPS ALB"
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PublicSubnets:
+    Type: List<AWS::EC2::Subnet::Id>
+  ImageUri:
+    Type: String
+  CertificateArn:
+    Type: String
+  SecretArn:
+    Type: String
+    Description: Secrets Manager JSON secret with APP_SECRET_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, HIBOB_SERVICE_USER_ID, HIBOB_SERVICE_USER_TOKEN, EXTERNAL_API_KEYS
+  DDBUsersTable:
+    Type: String
+    Default: _user_profiles_users
+  DDBAgenciesTable:
+    Type: String
+    Default: _user_profiles_agencies
+  DDBCoreProfilesTable:
+    Type: String
+    Default: _user_profiles_core_profiles
+  JobsQueueUrl:
+    Type: String
+    Default: ""
+  AllowedEmails:
+    Type: String
+  ImageTag:
+    Type: String
+    Default: latest
+
+Resources:
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: generated-profiles
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public HTTPS access for Generated profiles
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  ServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Fargate service ingress from ALB
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ReadApplicationSecret
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref SecretArn
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: GeneratedProfilesRuntime
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:DeleteItem
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DDBUsersTable}"
+                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DDBUsersTable}/index/*"
+                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DDBAgenciesTable}"
+                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DDBCoreProfilesTable}"
+                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DDBCoreProfilesTable}/index/*"
+              - Effect: Allow
+                Action: [sqs:SendMessage]
+                Resource: "*"
+              - Effect: Allow
+                Action: [bedrock:InvokeModel, bedrock:Converse, bedrock:Retrieve]
+                Resource: "*"
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: generated-profiles
+      Cpu: "512"
+      Memory: "1024"
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: web
+          Image: !Ref ImageUri
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8080
+          HealthCheck:
+            Command: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health')\""]
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 30
+          Environment:
+            - Name: APP_BASE_URL
+              Value: https://people.intelligence-platform.ai
+            - Name: ENVIRONMENT
+              Value: production
+            - Name: STORAGE_BACKEND
+              Value: dynamodb
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: AWS_PROFILE
+              Value: ""
+            - Name: DYNAMODB_USERS_TABLE
+              Value: !Ref DDBUsersTable
+            - Name: DYNAMODB_AGENCIES_TABLE
+              Value: !Ref DDBAgenciesTable
+            - Name: DYNAMODB_CORE_PROFILES_TABLE
+              Value: !Ref DDBCoreProfilesTable
+            - Name: _USER_PROFILES_OFFLOAD
+              Value: "true"
+            - Name: _USER_PROFILES_JOBS_QUEUE_URL
+              Value: !Ref JobsQueueUrl
+            - Name: ALLOWED_EMAILS
+              Value: !Ref AllowedEmails
+          Secrets:
+            - Name: APP_SECRET_KEY
+              ValueFrom: !Sub "${SecretArn}:APP_SECRET_KEY::"
+            - Name: GOOGLE_CLIENT_ID
+              ValueFrom: !Sub "${SecretArn}:GOOGLE_CLIENT_ID::"
+            - Name: GOOGLE_CLIENT_SECRET
+              ValueFrom: !Sub "${SecretArn}:GOOGLE_CLIENT_SECRET::"
+            - Name: SLACK_CLIENT_ID
+              ValueFrom: !Sub "${SecretArn}:SLACK_CLIENT_ID::"
+            - Name: SLACK_CLIENT_SECRET
+              ValueFrom: !Sub "${SecretArn}:SLACK_CLIENT_SECRET::"
+            - Name: HIBOB_SERVICE_USER_ID
+              ValueFrom: !Sub "${SecretArn}:HIBOB_SERVICE_USER_ID::"
+            - Name: HIBOB_SERVICE_USER_TOKEN
+              ValueFrom: !Sub "${SecretArn}:HIBOB_SERVICE_USER_TOKEN::"
+            - Name: EXTERNAL_API_KEYS
+              ValueFrom: !Sub "${SecretArn}:EXTERNAL_API_KEYS::"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/generated-profiles
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: web
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/generated-profiles
+      RetentionInDays: 30
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      Subnets: !Ref PublicSubnets
+      SecurityGroups: [!Ref LoadBalancerSecurityGroup]
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Port: 8080
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VpcId
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: "443"
+            StatusCode: HTTP_301
+
+  HttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref CertificateArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: [HttpsListener, LogGroup]
+    Properties:
+      ServiceName: generated-profiles-web
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups: [!Ref ServiceSecurityGroup]
+          Subnets: !Ref PublicSubnets
+      LoadBalancers:
+        - ContainerName: web
+          ContainerPort: 8080
+          TargetGroupArn: !Ref TargetGroup
+
+Outputs:
+  LoadBalancerDnsName:
+    Value: !GetAtt LoadBalancer.DNSName
+  ServiceUrl:
+    Value: https://people.intelligence-platform.ai

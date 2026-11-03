@@ -71,13 +71,56 @@ def collect_title_signals(user: UserProfile) -> list[dict[str, str]]:
 
     linkedin = as_dict(user.linkedin)
     if linkedin.get("status") == "ok" and linkedin.get("title"):
-        signals.append({"source": "linkedin", "title": str(linkedin["title"])})
+        # Defense: never treat a name-mismatched LinkedIn title as a role signal.
+        from app.services.identity_names import known_identity, names_compatible
+
+        identity = known_identity(user)
+        ok, _reason = names_compatible(identity, str(linkedin.get("title")))
+        if ok and identity.get("given_is_full"):
+            signals.append({"source": "linkedin", "title": str(linkedin["title"])})
 
     return signals
 
 
-def collect_work_context(user: UserProfile, agency: AgencyProfile | None) -> dict[str, Any]:
-    """Slack channels, KB themes, and agency hints that suggest day-to-day work."""
+def collect_network_peer_signals(user: UserProfile, store=None) -> list[dict[str, Any]]:
+    """Closest meeting partners — useful when the subject has little direct title data."""
+
+    assoc = as_dict(user.network_associations)
+    edges = assoc.get("edges") or []
+    if not isinstance(edges, list):
+        return []
+
+    ranked = sorted(
+        [e for e in edges if isinstance(e, dict)],
+        key=lambda e: int(e.get("closeness_score") or 0),
+        reverse=True,
+    )[:12]
+
+    peers: list[dict[str, Any]] = []
+    for edge in ranked:
+        peer_row: dict[str, Any] = {
+            "email": edge.get("email"),
+            "display_name": edge.get("display_name"),
+            "closeness_score": edge.get("closeness_score"),
+            "meeting_count": edge.get("meeting_count"),
+            "other_account_kind": edge.get("other_account_kind"),
+        }
+        peer_id = edge.get("other_user_id")
+        if store and peer_id:
+            peer = store.get_user(str(peer_id))
+            if peer:
+                wp = as_dict(peer.work_profile)
+                peer_row["peer_role_label"] = wp.get("primary_role_label")
+                peer_row["peer_function"] = wp.get("function")
+                peer_row["peer_seniority"] = wp.get("seniority")
+        peers.append(peer_row)
+    return peers
+
+
+def collect_work_context(
+    user: UserProfile, agency: AgencyProfile | None, store=None
+) -> dict[str, Any]:
+    """Slack channels, KB themes, network, and agency hints that suggest day-to-day work."""
 
     slack = as_dict(user.slack)
     enriched = as_dict(slack.get("enriched"))
@@ -101,12 +144,28 @@ def collect_work_context(user: UserProfile, agency: AgencyProfile | None) -> dic
     google = as_dict(user.google)
     cal = as_dict(google.get("calendar"))
     cal_norm = as_dict(cal.get("normalized")) if cal.get("status") == "ok" else {}
+    linkedin = as_dict(user.linkedin)
+    network_peers = collect_network_peer_signals(user, store)
+    from app.services.identity_names import known_identity, names_compatible
+
+    identity = known_identity(user)
+    linkedin_usable = False
+    if linkedin.get("status") == "ok" and linkedin.get("title") and identity.get("given_is_full"):
+        linkedin_usable, _ = names_compatible(identity, str(linkedin.get("title")))
 
     return {
+        "account_kind": user.account_kind,
+        "known_identity": {
+            "display_name": identity.get("display_name"),
+            "given": identity.get("given"),
+            "family": identity.get("family"),
+        },
         "title_signals": collect_title_signals(user),
         "slack_public_channels_sample": channel_names,
         "slack_channel_topics_sample": topics,
-        "linkedin_summary_excerpt": (as_dict(user.linkedin).get("summary") or "")[:400],
+        "linkedin_status": linkedin.get("status"),
+        "linkedin_title": linkedin.get("title") if linkedin_usable else None,
+        "linkedin_summary_excerpt": (linkedin.get("summary") or "")[:400] if linkedin_usable else None,
         "knowledge_base_snippets": kb_snippets,
         "calendar_meeting_patterns": {
             "top_attendees": (cal_norm.get("top_attendees") or [])[:15],
@@ -116,6 +175,12 @@ def collect_work_context(user: UserProfile, agency: AgencyProfile | None) -> dic
             "unique_other_attendees": cal_norm.get("unique_other_attendees"),
         }
         if cal_norm
+        else None,
+        "network_associations": {
+            "window_days": as_dict(user.network_associations).get("window_days"),
+            "closest_peers": network_peers,
+        }
+        if network_peers
         else None,
         "agency_domain": agency.domain if agency else user.email_domain,
         "agency_display_name": agency.display_name if agency else None,
@@ -135,7 +200,15 @@ def _heuristic_work_profile(user: UserProfile, work_ctx: dict[str, Any]) -> dict
         s.get("title", "") for s in work_ctx.get("title_signals") or []
     ).lower()
     channels = " ".join(work_ctx.get("slack_public_channels_sample") or []).lower()
-    blob = f"{titles} {channels}"
+    linkedin_blob = f"{work_ctx.get('linkedin_title') or ''} {work_ctx.get('linkedin_summary_excerpt') or ''}".lower()
+    peers = work_ctx.get("network_associations") or {}
+    peer_funcs = [
+        str(p.get("peer_function") or "")
+        for p in (peers.get("closest_peers") or [])
+        if isinstance(p, dict)
+    ]
+    peer_blob = " ".join(peer_funcs).lower()
+    blob = f"{titles} {channels} {linkedin_blob} {peer_blob}"
 
     function = "unknown"
     if any(k in blob for k in ("creative director", "art director", "copywriter", "designer", "creative")):
@@ -152,6 +225,13 @@ def _heuristic_work_profile(user: UserProfile, work_ctx: dict[str, Any]) -> dict
         function = "strategy"
     elif any(k in blob for k in ("ceo", "cfo", "coo", "president", "founder", "head of", "director", "vp")):
         function = "leadership_general"
+    elif peer_funcs:
+        # Sparse provisional: lean on closest peers' known functions
+        from collections import Counter
+
+        counts = Counter(f for f in peer_funcs if f and f != "unknown")
+        if counts:
+            function = counts.most_common(1)[0][0]
 
     seniority = "unknown"
     if "intern" in blob:
@@ -166,10 +246,13 @@ def _heuristic_work_profile(user: UserProfile, work_ctx: dict[str, Any]) -> dict
         seniority = "manager"
     elif "senior" in blob:
         seniority = "senior_ic"
-    elif titles.strip():
+    elif titles.strip() or linkedin_blob.strip():
         seniority = "individual_contributor"
 
-    primary = _pick_title(*(s.get("title") for s in work_ctx.get("title_signals") or []))
+    primary = _pick_title(
+        *(s.get("title") for s in work_ctx.get("title_signals") or []),
+        work_ctx.get("linkedin_title"),
+    )
 
     workflows: list[str] = []
     if function == "creative":
@@ -183,6 +266,21 @@ def _heuristic_work_profile(user: UserProfile, work_ctx: dict[str, Any]) -> dict
     elif seniority in ("director", "vp", "c_suite", "manager"):
         workflows = ["team_management", "stakeholder_updates", "resource_planning"]
 
+    has_direct = bool(primary or titles.strip() or linkedin_blob.strip())
+    has_network = bool(peers.get("closest_peers"))
+    confidence = 0.45 if has_direct else (0.28 if has_network else 0.15)
+    if work_ctx.get("account_kind") == "provisional" and confidence > 0.4:
+        confidence = 0.4
+
+    gaps = []
+    if not has_direct:
+        gaps.append("No direct title from Slack/HiBob/Google/LinkedIn")
+    if work_ctx.get("account_kind") == "provisional":
+        gaps.append("Provisional user — no Google/Slack login yet")
+    if not has_network:
+        gaps.append("No calendar network associations")
+    gaps.append("Confirm role with richer signals when available")
+
     return {
         "status": "ok",
         "method": "heuristic",
@@ -194,20 +292,24 @@ def _heuristic_work_profile(user: UserProfile, work_ctx: dict[str, Any]) -> dict
         "is_people_leader": seniority in ("manager", "director", "vp", "c_suite"),
         "work_focus_phrases": [],
         "suggested_workflows": workflows or ["unknown"],
-        "confidence": 0.45 if primary else 0.2,
-        "reasoning": "Keyword match on titles and Slack channel names (Bedrock unavailable or parse failed).",
-        "evidence_gaps": ["Confirm role with richer Slack/HiBob/LinkedIn signals"],
+        "confidence": confidence,
+        "reasoning": (
+            "Keyword match on titles, LinkedIn, Slack channels, and closest meeting peers "
+            "(Bedrock unavailable or parse failed)."
+        ),
+        "evidence_gaps": gaps,
     }
 
 
 def infer_work_profile(
-    settings: Settings, user: UserProfile, agency: AgencyProfile | None
+    settings: Settings, user: UserProfile, agency: AgencyProfile | None, store=None
 ) -> dict[str, Any]:
     """
     Structured inference: what this person does, for routing workflows in MTP platforms.
+    Works for sparse/provisional users using LinkedIn + meeting-network peers.
     """
 
-    work_ctx = collect_work_context(user, agency)
+    work_ctx = collect_work_context(user, agency, store=store)
     identity_ctx = build_llm_context(user, agency)
 
     prompt = (
@@ -228,10 +330,12 @@ def infer_work_profile(
         '  "evidence_gaps": string[] (what would improve certainty)\n'
         "Rules:\n"
         "- Prefer Slack title, then HiBob, then Google org, then LinkedIn when they conflict.\n"
+        "- For provisional / sparse profiles: lean on LinkedIn + network_associations.closest_peers "
+        "(closeness_score and peer_function/peer_role_label) — still use low confidence.\n"
         "- Use calendar_meeting_patterns (who they meet often, external vs same-domain) for network and segment hints.\n"
         "- Distinguish creative leadership vs data/analytics vs engineering vs account management.\n"
         "- Do not invent employers, clients, or tools not in the context.\n"
-        "- Low confidence if titles are missing or contradictory.\n\n"
+        "- Low confidence if titles are missing or contradictory; never invent high confidence.\n\n"
         f"WORK_CONTEXT:\n{json.dumps(work_ctx, indent=2, default=str)}\n\n"
         f"FULL_ENRICHMENT:\n{json.dumps(identity_ctx, indent=2, default=str)}"
     )
@@ -250,6 +354,8 @@ def infer_work_profile(
         parsed["method"] = "bedrock"
         parsed["title_signals"] = work_ctx.get("title_signals")
         parsed["generated_at"] = utc_now().isoformat()
+        if user.account_kind == "provisional" and float(parsed.get("confidence") or 0) > 0.55:
+            parsed["confidence"] = 0.55
         return parsed
     except Exception as exc:  # noqa: BLE001
         fallback = _heuristic_work_profile(user, work_ctx)
@@ -262,7 +368,7 @@ def infer_work_profile(
 def persist_work_profile(
     settings: Settings, user: UserProfile, agency: AgencyProfile | None, store
 ) -> UserProfile:
-    user.work_profile = infer_work_profile(settings, user, agency)
+    user.work_profile = infer_work_profile(settings, user, agency, store=store)
     user.work_profile_generated_at = utc_now()
     user.touch()
     store.save_user(user)

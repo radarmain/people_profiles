@@ -44,6 +44,49 @@ async def run_enrich_job(user_id: str, store: ProfileStore | None = None, settin
         raise
 
 
+async def run_work_profile_job(
+    user_id: str, store: ProfileStore | None = None, settings: Settings | None = None
+) -> None:
+    """
+    Refresh available signals, then infer work_profile (+ role brief).
+
+    Safe for provisional users (no Google/Slack tokens): uses LinkedIn, KB, HiBob,
+    and meeting-network peer closeness.
+    """
+
+    settings = settings or get_settings()
+    store = store or get_store()
+    user = store.get_user(user_id)
+    if not user:
+        raise ValueError(f"User not found: {user_id}")
+    normalize_user_blobs(user)
+
+    _set_job_status(user, job_type="work_profile", state="running")
+    store.save_user(user)
+
+    try:
+        await refresh_user_profile(store, settings, user)
+        user = store.get_user(user_id) or user
+
+        agency = store.get_agency(user.agency_id) if user.agency_id else None
+        if not agency:
+            agency = ensure_user_agency(store, user)
+
+        persist_work_profile(settings, user, agency, store)
+        user = store.get_user(user_id) or user
+
+        SummaryService(settings).persist_user_summary(user, agency, store)
+
+        user = store.get_user(user_id) or user
+        _set_job_status(user, job_type="work_profile", state="completed")
+        store.save_user(user)
+    except Exception as exc:  # noqa: BLE001
+        user = store.get_user(user_id) or user
+        _set_job_status(user, job_type="work_profile", state="failed", detail=str(exc))
+        store.save_user(user)
+        raise
+
+
 async def run_summarize_job(user_id: str, store: ProfileStore | None = None, settings: Settings | None = None) -> None:
     settings = settings or get_settings()
     store = store or get_store()

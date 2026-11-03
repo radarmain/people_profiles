@@ -9,6 +9,7 @@ from app.config import get_settings
 from app.dependencies import require_user
 from app.models.domain import UserProfile
 from app.services.agency import domain_from_email, ensure_user_agency
+from app.services.core_profiles import seed_user_from_core_profile
 from app.services.provisional_user import merge_provisional_into_member
 from app.services._user_profiles_jobs import JOB_ENRICH, dispatch_user_profiles_job
 from app.storage.factory import get_store
@@ -83,6 +84,14 @@ async def google_callback(request: Request):
     if not email:
         raise HTTPException(status_code=400, detail="Google account must have an email")
 
+    settings = get_settings()
+    if not settings.is_email_allowed(email):
+        request.session.clear()
+        raise HTTPException(
+            status_code=403,
+            detail="This Google account is not authorized to access Generated profiles.",
+        )
+
     store = get_store()
     existing = store.get_user(user_id)
     by_email = store.get_user_by_email(email)
@@ -134,6 +143,8 @@ async def google_callback(request: Request):
         store.save_user(user)
         ensure_user_agency(store, user)
 
+    seed_user_from_core_profile(store, user)
+    store.save_user(user)
     request.session["user_id"] = user.user_id
 
     # Full profile scrub runs asynchronously (SQS/Lambda when offload enabled).
@@ -180,6 +191,7 @@ async def slack_callback(request: Request, code: str | None = None, state: str |
     if not expected or expected != state:
         raise HTTPException(status_code=400, detail="Invalid Slack OAuth state")
 
+    settings = get_settings()
     store = get_store()
     user = store.get_user(state)
     if not user:

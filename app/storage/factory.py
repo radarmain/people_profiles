@@ -17,6 +17,7 @@ def get_store() -> ProfileStore:
         return DynamoDBStore(
             users_table=settings.dynamodb_users_table,
             agencies_table=settings.dynamodb_agencies_table,
+            core_profiles_table=settings.dynamodb_core_profiles_table,
             region=settings.aws_region,
             endpoint_url=endpoint,
             profile_name=profile,

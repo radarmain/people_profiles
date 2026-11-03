@@ -136,3 +136,29 @@ class HiBobClient:
 
         normalized = _flatten_employee(employees[0])
         return {"status": "ok", "normalized": normalized, "search_response": data}
+
+    async def list_people(self) -> list[dict[str, Any]]:
+        """Return the normalized people directory for Core profiles sync."""
+        if not self.enabled:
+            return []
+        payload = {
+            "fields": [
+                "root.id", "root.firstName", "root.surname", "root.email",
+                "root.displayName", "work.title", "work.department", "work.site",
+                "work.startDate", "work.reportsTo",
+            ],
+            "humanReadable": "APPEND",
+        }
+        headers = {
+            "Authorization": _auth_header(self.settings),
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(f"{self.base}/people/search", json=payload, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+        employees = data.get("employees") or data.get("results") or data
+        if isinstance(employees, dict):
+            employees = employees.get("employees") or employees.get("results") or []
+        return [_flatten_employee(employee) for employee in employees if isinstance(employee, dict)]

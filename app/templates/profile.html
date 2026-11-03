@@ -44,7 +44,16 @@
     });
   </script>
   <a class="btn" href="/auth/google/relink">Re-link Google</a>
+  {% if not user.slack_connected %}
+  <a class="btn primary" href="/connect/slack">Connect Slack</a>
+  {% endif %}
 </div>
+{% if not user.slack_connected %}
+<p class="muted small">
+  Slack is not connected{% if user.slack_connect_bypassed %} (previously bypassed){% endif %}.
+  Connect it to pull workspace title, timezone, and public channel membership.
+</p>
+{% endif %}
 {% if user.google.get('people', {}).get('status') in ['reauth_required', 'no_token'] or user.google.get('calendar', {}).get('status') == 'reauth_required' %}
 <p class="muted small">Google needs updated consent for People and/or Calendar. Click <strong>Re-link Google</strong>, then <strong>Refresh enrichment</strong>.</p>
 {% endif %}

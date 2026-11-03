@@ -180,6 +180,7 @@ async def slack_callback(request: Request, code: str | None = None, state: str |
     if not expected or expected != state:
         raise HTTPException(status_code=400, detail="Invalid Slack OAuth state")
 
+    settings = get_settings()
     store = get_store()
     user = store.get_user(state)
     if not user:

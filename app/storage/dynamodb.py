@@ -5,7 +5,7 @@ from typing import Any
 import boto3
 from botocore.exceptions import ClientError
 
-from app.models.domain import AgencyProfile, UserProfile
+from app.models.domain import AgencyProfile, CoreProfile, UserProfile
 from app.storage.base import ProfileStore
 
 
@@ -37,6 +37,7 @@ class DynamoDBStore(ProfileStore):
         *,
         users_table: str,
         agencies_table: str,
+        core_profiles_table: str,
         region: str,
         endpoint_url: str | None,
         profile_name: str | None,
@@ -48,6 +49,45 @@ class DynamoDBStore(ProfileStore):
         self.dynamodb = session.resource("dynamodb", endpoint_url=endpoint_url)
         self.users = self.dynamodb.Table(users_table)
         self.agencies = self.dynamodb.Table(agencies_table)
+        self.core_profiles = self.dynamodb.Table(core_profiles_table)
+
+    def get_core_profile_by_email(self, email: str) -> CoreProfile | None:
+        resp = self.core_profiles.query(
+            IndexName="email-index",
+            KeyConditionExpression="email = :e",
+            ExpressionAttributeValues={":e": email.strip().lower()},
+            Limit=1,
+        )
+        items = resp.get("Items") or []
+        return CoreProfile.model_validate(_deserialize(items[0])) if items else None
+
+    def save_core_profile(self, profile: CoreProfile) -> CoreProfile:
+        profile.touch()
+        payload = json.loads(profile.model_dump_json())
+        self.core_profiles.put_item(Item=_serialize(payload))
+        return profile
+
+    def list_core_profiles(self, query: str = "") -> list[CoreProfile]:
+        profiles: list[CoreProfile] = []
+        scan_kwargs: dict[str, Any] = {}
+        while True:
+            resp = self.core_profiles.scan(**scan_kwargs)
+            for item in resp.get("Items") or []:
+                profiles.append(CoreProfile.model_validate(_deserialize(item)))
+            token = resp.get("LastEvaluatedKey")
+            if not token:
+                break
+            scan_kwargs["ExclusiveStartKey"] = token
+        needle = query.strip().lower()
+        if needle:
+            profiles = [
+                p for p in profiles
+                if needle in " ".join(
+                    str(v or "")
+                    for v in (p.email, p.display_name, p.title, p.department, p.site)
+                ).lower()
+            ]
+        return sorted(profiles, key=lambda p: (p.display_name or p.email).lower())
 
     def get_user(self, user_id: str) -> UserProfile | None:
         resp = self.users.get_item(Key={"user_id": user_id})

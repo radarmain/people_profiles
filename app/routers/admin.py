@@ -17,6 +17,7 @@ from app.services.admin_overview import (
     user_admin_row,
     user_detail_payload,
 )
+from app.services.core_profiles import sync_core_profiles
 from app.services.job_runner import run_work_profile_job
 from app.storage.factory import get_store
 
@@ -32,6 +33,8 @@ async def admin_home(request: Request, user: UserProfile = Depends(require_admin
     settings = get_settings()
     users = store.list_users()
     agencies = store.list_agencies()
+    core_query = request.query_params.get("core_q", "")
+    core_profiles = store.list_core_profiles(core_query)
     return templates.TemplateResponse(
         request,
         "admin.html",
@@ -42,8 +45,28 @@ async def admin_home(request: Request, user: UserProfile = Depends(require_admin
             user_rows=[user_admin_row(u) for u in users],
             agency_rows=[agency_admin_row(a) for a in agencies],
             storage_backend=settings.storage_backend,
+            core_query=core_query,
+            core_profiles=core_profiles,
+            core_sync_notice=request.query_params.get("core_sync"),
+            core_sync_error=request.query_params.get("core_sync_error"),
         ),
     )
+
+
+@router.post("/core-profiles/sync")
+async def admin_sync_core_profiles(
+    request: Request,
+    admin: UserProfile = Depends(require_admin),
+):
+    try:
+        count = await sync_core_profiles(get_store(), get_settings())
+        return RedirectResponse(url=f"/admin?core_sync={count}", status_code=303)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Core profile sync failed for %s", admin.email)
+        return RedirectResponse(
+            url=f"/admin?core_sync_error={quote(str(exc)[:500])}",
+            status_code=303,
+        )
 
 
 @router.get("/users/{user_id}", response_class=HTMLResponse)

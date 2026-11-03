@@ -5,9 +5,12 @@
   <h1>Connect Slack</h1>
   <p>
     We use Slack to enrich your profile (display name, title, timezone, workspace). You can connect
-    now or bypass while you adjust Slack app permissions.
+    now or bypass and connect later from your profile.
   </p>
   <p>Signed in as <strong>{{ user.email }}</strong></p>
+  {% if user.slack_connect_bypassed %}
+  <p class="notice ok">Slack was previously bypassed — you can connect it now.</p>
+  {% endif %}
   <p class="note small muted">
     If Slack shows <em>redirect_uri did not match</em>, add this exact URL under your Slack app
     → <strong>OAuth &amp; Permissions</strong> → <strong>Redirect URLs</strong> (then Save):
@@ -15,9 +18,13 @@
   <pre class="summary">{{ slack_redirect_uri }}</pre>
   <div class="actions">
     <a class="btn primary" href="/auth/slack/connect">Connect Slack account</a>
+    {% if not user.slack_connect_bypassed %}
     <form method="post" action="/auth/slack/bypass">
       <button type="submit" class="btn">Bypass Slack connect (for now)</button>
     </form>
+    {% else %}
+    <a class="btn" href="/profile">Back to profile</a>
+    {% endif %}
   </div>
 </section>
 {% endblock %}

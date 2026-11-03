@@ -3,9 +3,45 @@
 {% block content %}
 <section class="profile-header">
   <div>
-    <h1>Organization admin</h1>
-    <p class="muted">Meet The People network · stored profiles (OAuth tokens redacted on detail views)</p>
+    <h1>Generated profiles admin</h1>
+    <p class="muted">Generated profile output and source-backed Core profiles.</p>
   </div>
+</section>
+
+<section class="card">
+  <div class="profile-header">
+    <div>
+      <h2>Core profiles</h2>
+      <p class="muted">HiBob-backed source data used when new Generated profiles are created.</p>
+    </div>
+    <form method="post" action="/admin/core-profiles/sync">
+      <button class="btn primary" type="submit">Sync from HiBob</button>
+    </form>
+  </div>
+  {% if core_sync_notice %}<p class="pill ok">Synced {{ core_sync_notice }} core profiles.</p>{% endif %}
+  {% if core_sync_error %}<p class="warn-text">{{ core_sync_error }}</p>{% endif %}
+  <form method="get" action="/admin" class="inline-form">
+    <input name="core_q" value="{{ core_query }}" placeholder="Search name, email, title, department..." />
+    <button class="btn" type="submit">Search</button>
+  </form>
+  {% if core_profiles %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Person</th><th>Title</th><th>Department</th><th>Site</th><th>Synced</th></tr></thead>
+      <tbody>
+      {% for profile in core_profiles %}
+        <tr>
+          <td><strong>{{ profile.display_name or profile.email }}</strong><br /><span class="muted small">{{ profile.email }}</span></td>
+          <td>{{ profile.title or '—' }}</td>
+          <td>{{ profile.department or '—' }}</td>
+          <td>{{ profile.site or '—' }}</td>
+          <td class="small">{{ profile.synced_at }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p class="muted">No Core profiles found. Run a HiBob sync to populate this section.</p>{% endif %}
 </section>
 
 <section class="stats-row">

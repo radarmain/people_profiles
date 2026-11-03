@@ -8,6 +8,28 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class CoreProfile(BaseModel):
+    """HiBob-backed source record used to seed and identify generated profiles."""
+
+    core_id: str
+    hibob_id: str | None = None
+    email: str
+    email_domain: str = ""
+    display_name: str | None = None
+    title: str | None = None
+    department: str | None = None
+    site: str | None = None
+    manager_id: str | None = None
+    manager_name: str | None = None
+    start_date: str | None = None
+    raw: dict[str, Any] = Field(default_factory=dict)
+    synced_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+    def touch(self) -> None:
+        self.updated_at = utc_now()
+
+
 AccountKind = Literal["member", "provisional"]
 
 _USER_BLOB_FIELDS = (

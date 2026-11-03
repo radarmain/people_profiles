@@ -38,7 +38,8 @@ async def home(request: Request):
 
 @router.get("/connect/slack", response_class=HTMLResponse)
 async def connect_slack_page(request: Request, user: UserProfile = Depends(require_user)):
-    if user.slack_connected or user.slack_connect_bypassed:
+    # Always allow reconnect/connect when Slack is not linked (bypass only skips the gate).
+    if user.slack_connected:
         return RedirectResponse(url="/profile", status_code=303)
     settings = get_settings()
     slack_redirect_uri = f"{settings.app_base_url.rstrip('/')}/auth/slack/callback"

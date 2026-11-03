@@ -7,6 +7,7 @@ from typing import Any
 
 from app.models.domain import UserProfile, utc_now
 from app.services.agency import domain_from_email, ensure_user_agency
+from app.services.identity_names import parse_email_local_name
 from app.services.safe_dict import as_dict
 from app.storage.base import ProfileStore
 
@@ -14,6 +15,13 @@ from app.storage.base import ProfileStore
 def provisional_user_id_for_email(email: str) -> str:
     digest = hashlib.sha256(email.strip().lower().encode("utf-8")).hexdigest()[:24]
     return f"prov_{digest}"
+
+
+def _best_display_name(email: str, display_name: str | None) -> str | None:
+    if display_name and str(display_name).strip():
+        return str(display_name).strip()
+    hint = parse_email_local_name(email).get("display_hint")
+    return str(hint) if hint else None
 
 
 def create_provisional_from_calendar(
@@ -32,6 +40,17 @@ def create_provisional_from_calendar(
     normalized = email.strip().lower()
     existing = store.get_user_by_email(normalized)
     if existing:
+        # Backfill a better display name when calendar later provides one.
+        if display_name and str(display_name).strip():
+            candidate = str(display_name).strip()
+            current = (existing.display_name or "").strip()
+            # Prefer full names over email-initial hints like "J Lewis"
+            if (not current) or (len(candidate.split()) >= 2 and len(current.split()) < 2) or (
+                len(candidate) > len(current) and " " in candidate
+            ):
+                if candidate.lower() != current.lower():
+                    existing.display_name = candidate
+                    store.save_user(existing)
         return existing, False
 
     user_id = provisional_user_id_for_email(normalized)
@@ -43,7 +62,7 @@ def create_provisional_from_calendar(
         user_id=user_id,
         email=normalized,
         email_domain=domain_from_email(normalized),
-        display_name=display_name or None,
+        display_name=_best_display_name(normalized, display_name),
         account_kind="provisional",
         google={
             "discovered_via": "calendar",

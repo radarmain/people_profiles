@@ -45,7 +45,22 @@ AWS_PROFILE=concrete aws bedrock-agent list-knowledge-bases --region "$AWS_KB_RE
 - [ ] Audit logging for PII access  
 - [ ] Replace DuckDuckGo with a contracted search API (Tavily, etc.)  
 
-## Deployment options (future)
+## Deployment
+
+The web deployment is defined in [`infra/_user_profiles_web_stack.yaml`](../infra/_user_profiles_web_stack.yaml)
+and can be run with [`scripts/deploy_web.sh`](../scripts/deploy_web.sh). It uses ECS Fargate
+behind an HTTPS Application Load Balancer. Before running it, create:
+
+- An issued ACM certificate for `people.intelligence-platform.ai`
+- A JSON Secrets Manager secret containing the application credentials listed in the web stack
+- Public subnets in the target VPC
+- `ALLOWED_EMAILS` containing every permitted Google login address
+
+After deployment, create a DNS `CNAME` for `people.intelligence-platform.ai` pointing to the
+stack's `LoadBalancerDnsName` output. Google and Slack OAuth redirect URLs must use the production
+base URL.
+
+## Other deployment options
 
 - **ECS/Fargate** or **App Runner** for the FastAPI container  
 - **ALB** + TLS termination  

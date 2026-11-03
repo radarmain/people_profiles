@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from app.models.domain import AgencyProfile, UserProfile
+from app.models.domain import AgencyProfile, CoreProfile, UserProfile
 from app.storage.base import ProfileStore
 
 
@@ -10,8 +10,43 @@ class LocalJsonStore(ProfileStore):
         self.root = Path(data_dir)
         self.users_dir = self.root / "users"
         self.agencies_dir = self.root / "agencies"
+        self.core_profiles_dir = self.root / "core_profiles"
         self.users_dir.mkdir(parents=True, exist_ok=True)
         self.agencies_dir.mkdir(parents=True, exist_ok=True)
+        self.core_profiles_dir.mkdir(parents=True, exist_ok=True)
+
+    def _core_profile_path(self, core_id: str) -> Path:
+        safe = core_id.replace("/", "_")
+        return self.core_profiles_dir / f"{safe}.json"
+
+    def get_core_profile_by_email(self, email: str) -> CoreProfile | None:
+        normalized = email.strip().lower()
+        for path in self.core_profiles_dir.glob("*.json"):
+            profile = CoreProfile.model_validate_json(path.read_text())
+            if profile.email.lower() == normalized:
+                return profile
+        return None
+
+    def save_core_profile(self, profile: CoreProfile) -> CoreProfile:
+        profile.touch()
+        self._core_profile_path(profile.core_id).write_text(profile.model_dump_json(indent=2))
+        return profile
+
+    def list_core_profiles(self, query: str = "") -> list[CoreProfile]:
+        needle = query.strip().lower()
+        profiles = [
+            CoreProfile.model_validate_json(path.read_text())
+            for path in self.core_profiles_dir.glob("*.json")
+        ]
+        if needle:
+            profiles = [
+                p for p in profiles
+                if needle in " ".join(
+                    str(v or "")
+                    for v in (p.email, p.display_name, p.title, p.department, p.site)
+                ).lower()
+            ]
+        return sorted(profiles, key=lambda p: (p.display_name or p.email).lower())
 
     def _user_path(self, user_id: str) -> Path:
         safe = user_id.replace("/", "_")

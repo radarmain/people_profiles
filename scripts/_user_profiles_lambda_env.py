@@ -25,6 +25,7 @@ PASS_THROUGH = [
     "STORAGE_BACKEND",
     "DYNAMODB_USERS_TABLE",
     "DYNAMODB_AGENCIES_TABLE",
+    "DYNAMODB_CORE_PROFILES_TABLE",
     "AWS_REGION",
     "AWS_KB_REGION",
     "GOOGLE_CLIENT_ID",
@@ -64,6 +65,7 @@ def main() -> None:
     prefix = values.get("_USER_PROFILES_PREFIX", "_user_profiles")
     values.setdefault("DYNAMODB_USERS_TABLE", f"{prefix}_users")
     values.setdefault("DYNAMODB_AGENCIES_TABLE", f"{prefix}_agencies")
+    values.setdefault("DYNAMODB_CORE_PROFILES_TABLE", f"{prefix}_core_profiles")
     variables = {
         k: values[k]
         for k in PASS_THROUGH

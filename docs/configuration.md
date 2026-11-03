@@ -9,6 +9,9 @@ Settings load from `.env` via `pydantic-settings` (`app/config.py`). Restart the
 | `APP_SECRET_KEY` | (dev placeholder) | Session cookie signing secret |
 | `APP_BASE_URL` | `http://127.0.0.1:8080` | Base URL for OAuth redirects |
 | `ENVIRONMENT` | `local` | Shown in `/health` |
+| `ALLOWED_EMAILS` | empty | Comma-separated Google emails allowed to sign in |
+| `ADMIN_EMAILS` | empty | Comma-separated emails allowed to access `/admin` |
+| `EXTERNAL_API_KEYS` | empty | Comma-separated API keys for `/api/v1` clients |
 
 ## Storage
 
@@ -22,6 +25,7 @@ Settings load from `.env` via `pydantic-settings` (`app/config.py`). Restart the
 | `DYNAMODB_ENDPOINT` | `http://127.0.0.1:8000` | Set for DynamoDB Local |
 | `DYNAMODB_USERS_TABLE` | `_user_profiles_users` | Users table name |
 | `DYNAMODB_AGENCIES_TABLE` | `_user_profiles_agencies` | Agencies table name |
+| `DYNAMODB_CORE_PROFILES_TABLE` | `_user_profiles_core_profiles` | HiBob Core profiles table name |
 
 ## Lambda offload (`_user_profiles`)
 

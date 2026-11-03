@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     environment: str = "local"
     # Comma-separated emails allowed to access /admin (empty = no admins)
     admin_emails: str = ""
+    # Comma-separated emails allowed to sign in. Empty preserves local development behavior.
+    allowed_emails: str = ""
+    # Comma-separated secrets accepted by the external read API.
+    external_api_keys: str = ""
 
     storage_backend: str = "local"
     local_data_dir: str = ".data"
@@ -33,6 +37,7 @@ class Settings(BaseSettings):
     dynamodb_endpoint: str | None = None
     dynamodb_users_table: str = "_user_profiles_users"
     dynamodb_agencies_table: str = "_user_profiles_agencies"
+    dynamodb_core_profiles_table: str = "_user_profiles_core_profiles"
 
     user_profiles_offload: bool = Field(default=False, validation_alias="_USER_PROFILES_OFFLOAD")
     # When false (default), role/summary runs in the web process so the button waits for results.
@@ -119,6 +124,20 @@ class Settings(BaseSettings):
     @property
     def admin_email_set(self) -> set[str]:
         return {e.strip().lower() for e in self.admin_emails.split(",") if e.strip()}
+
+    @property
+    def allowed_email_set(self) -> set[str]:
+        return {e.strip().lower() for e in self.allowed_emails.split(",") if e.strip()}
+
+    @property
+    def external_api_key_set(self) -> set[str]:
+        return {key.strip() for key in self.external_api_keys.split(",") if key.strip()}
+
+    def is_email_allowed(self, email: str | None) -> bool:
+        allowed = self.allowed_email_set
+        if self.environment.lower() in {"production", "prod"} and not allowed:
+            return False
+        return not allowed or (email or "").strip().lower() in allowed
 
     @property
     def google_configured(self) -> bool:

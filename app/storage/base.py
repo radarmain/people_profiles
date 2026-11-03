@@ -1,9 +1,18 @@
 from abc import ABC, abstractmethod
 
-from app.models.domain import AgencyProfile, UserProfile
+from app.models.domain import AgencyProfile, CoreProfile, UserProfile
 
 
 class ProfileStore(ABC):
+    @abstractmethod
+    def get_core_profile_by_email(self, email: str) -> CoreProfile | None: ...
+
+    @abstractmethod
+    def save_core_profile(self, profile: CoreProfile) -> CoreProfile: ...
+
+    @abstractmethod
+    def list_core_profiles(self, query: str = "") -> list[CoreProfile]: ...
+
     @abstractmethod
     def get_user(self, user_id: str) -> UserProfile | None: ...
 

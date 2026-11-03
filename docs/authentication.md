@@ -3,6 +3,7 @@
 ## Google (required)
 
 - Entry: `GET /auth/login` → Google OAuth → `GET /auth/google/callback`
+- Production access is restricted by the comma-separated `ALLOWED_EMAILS` setting.
 - Scopes: OpenID + profile + email + People API-related scopes (see [Google integration](./integrations/google.md))
 - **`access_type=offline`** is requested so refresh tokens can be stored for People API calls
 - User record key: Google `sub` → `UserProfile.user_id`
@@ -26,6 +27,11 @@ Users must **re-authorize Slack** after scope changes in the Slack app or `.env`
 - Cookie-based session via `SessionMiddleware`
 - Key field: `session["user_id"]`
 - Logout: `POST /auth/logout` clears session
+
+## External API
+
+Machine clients authenticate with an API key in `X-API-Key` or as a Bearer token.
+Configure keys with `EXTERNAL_API_KEYS`; store them in AWS Secrets Manager for production.
 
 ## Security notes (PoC)
 

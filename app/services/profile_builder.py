@@ -7,6 +7,7 @@ from app.services.agency import ensure_user_agency
 from app.services.calendar_network_sync import sync_calendar_network
 from app.services.google_enrichment import enrich_google
 from app.services.hibob import HiBobClient
+from app.services.core_profiles import seed_user_from_core_profile
 from app.services.identity_resolve import resolve_identity_name
 from app.services.linkedin_lookup import enrich_linkedin
 from app.services.internal_tools import enrich_from_internal_tools
@@ -45,15 +46,18 @@ async def _enrich_shared_sources(store: ProfileStore, settings: Settings, user: 
     internal = await enrich_from_internal_tools(email=user.email, domain=user.email_domain)
     user.internal = {"tools": internal}
 
-    hibob_client = HiBobClient(settings)
-    if hibob_client.enabled:
-        try:
-            hibob_data = await hibob_client.find_by_email(user.email)
-            user.hibob = hibob_data or {"status": "not_found"}
-        except Exception as exc:  # noqa: BLE001 — PoC: capture vendor errors on profile
-            user.hibob = {"status": "error", "message": str(exc)}
+    if store.get_core_profile_by_email(user.email):
+        seed_user_from_core_profile(store, user)
     else:
-        user.hibob = {"status": "not_configured"}
+        hibob_client = HiBobClient(settings)
+        if hibob_client.enabled:
+            try:
+                hibob_data = await hibob_client.find_by_email(user.email)
+                user.hibob = hibob_data or {"status": "not_found"}
+            except Exception as exc:  # noqa: BLE001 — PoC: capture vendor errors on profile
+                user.hibob = {"status": "error", "message": str(exc)}
+        else:
+            user.hibob = {"status": "not_configured"}
 
     if settings.bedrock_kb_configured:
         try:
