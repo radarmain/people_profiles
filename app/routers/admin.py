@@ -1,9 +1,11 @@
+import csv
+import io
 import json
 import logging
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from app.config import get_settings
@@ -176,6 +178,58 @@ async def admin_sync_core_profiles(
             url=f"/admin/core-profiles?core_sync_error={quote(str(exc)[:500])}",
             status_code=303,
         )
+
+
+@router.get("/core-profiles/export.csv")
+async def admin_export_core_profiles(
+    admin: UserProfile = Depends(require_admin),
+):
+    """Export all HiBob-backed Core profiles as a CSV file."""
+
+    del admin
+    fields = [
+        "core_id",
+        "hibob_id",
+        "email",
+        "email_domain",
+        "display_name",
+        "title",
+        "department",
+        "site",
+        "manager_id",
+        "manager_name",
+        "start_date",
+        "synced_at",
+        "updated_at",
+        "raw",
+    ]
+    output = io.StringIO(newline="")
+    writer = csv.DictWriter(output, fieldnames=fields)
+    writer.writeheader()
+    for profile in get_store().list_core_profiles():
+        writer.writerow(
+            {
+                "core_id": profile.core_id,
+                "hibob_id": profile.hibob_id or "",
+                "email": profile.email,
+                "email_domain": profile.email_domain,
+                "display_name": profile.display_name or "",
+                "title": profile.title or "",
+                "department": profile.department or "",
+                "site": profile.site or "",
+                "manager_id": profile.manager_id or "",
+                "manager_name": profile.manager_name or "",
+                "start_date": profile.start_date or "",
+                "synced_at": profile.synced_at.isoformat(),
+                "updated_at": profile.updated_at.isoformat(),
+                "raw": json.dumps(profile.raw, ensure_ascii=False, default=str),
+            }
+        )
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=core-profiles.csv"},
+    )
 
 
 @router.get("/core-profiles/{core_id}", response_class=HTMLResponse)

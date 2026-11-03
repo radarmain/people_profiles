@@ -2,7 +2,7 @@
 {% block title %}Core profiles — Admin{% endblock %}
 {% block content %}
 {% include "partials/breadcrumbs.html" %}
-<div class="page-heading"><div><p class="eyebrow">Admin / Core profiles</p><h1>Core profiles</h1><p class="muted">HiBob-backed source records used to seed generated profiles.</p></div><form method="post" action="/admin/core-profiles/sync"><button class="btn primary" type="submit">Sync from HiBob</button></form></div>
+<div class="page-heading"><div><p class="eyebrow">Admin / Core profiles</p><h1>Core profiles</h1><p class="muted">HiBob-backed source records used to seed generated profiles.</p></div><div class="actions"><a class="btn" href="/admin/core-profiles/export.csv">Export CSV</a><form method="post" action="/admin/core-profiles/sync"><button class="btn primary" type="submit">Sync from HiBob</button></form></div></div>
 <div class="admin-tabs">{% include "partials/admin_tabs.html" %}</div>
 {% if core_sync_notice %}<div class="notice ok">Synced {{ core_sync_notice }} core profiles.</div>{% endif %}{% if core_sync_error %}<div class="notice error">{{ core_sync_error }}</div>{% endif %}
 <form class="search-bar" method="get"><input name="q" value="{{ query }}" placeholder="Search name, email, title, department, or site" /><button class="btn" type="submit">Search</button></form>
