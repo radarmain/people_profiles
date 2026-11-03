@@ -27,6 +27,8 @@ Parameters:
     Default: ""
   AllowedEmails:
     Type: String
+  AdminEmails:
+    Type: String
   ImageTag:
     Type: String
     Default: latest
@@ -151,8 +153,6 @@ Resources:
               Value: dynamodb
             - Name: AWS_REGION
               Value: !Ref AWS::Region
-            - Name: AWS_PROFILE
-              Value: ""
             - Name: DYNAMODB_USERS_TABLE
               Value: !Ref DDBUsersTable
             - Name: DYNAMODB_AGENCIES_TABLE
@@ -165,6 +165,8 @@ Resources:
               Value: !Ref JobsQueueUrl
             - Name: ALLOWED_EMAILS
               Value: !Ref AllowedEmails
+            - Name: ADMIN_EMAILS
+              Value: !Ref AdminEmails
           Secrets:
             - Name: APP_SECRET_KEY
               ValueFrom: !Sub "${SecretArn}:APP_SECRET_KEY::"

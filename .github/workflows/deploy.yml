@@ -1,0 +1,75 @@
+name: Deploy Generated profiles
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY || 'generated-profiles' }}
+  WEB_STACK_NAME: ${{ vars.WEB_STACK_NAME || 'generated-profiles-web' }}
+  WEB_CERTIFICATE_ARN: ${{ vars.WEB_CERTIFICATE_ARN }}
+  WEB_SECRET_ARN: ${{ vars.WEB_SECRET_ARN }}
+  WEB_VPC_ID: ${{ vars.WEB_VPC_ID }}
+  WEB_PUBLIC_SUBNETS: ${{ vars.WEB_PUBLIC_SUBNETS }}
+  ALLOWED_EMAILS: ${{ vars.ALLOWED_EMAILS }}
+  ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+
+      - name: Read jobs queue URL
+        id: queue
+        shell: bash
+        run: |
+          queue_url="$(aws cloudformation describe-stacks \
+            --stack-name user-profiles-stack \
+            --query "Stacks[0].Outputs[?OutputKey=='UserProfilesJobsQueueUrl'].OutputValue" \
+            --output text)"
+          echo "url=$queue_url" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy web stack
+        shell: bash
+        env:
+          IMAGE_URI: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+        run: |
+          aws cloudformation deploy \
+            --stack-name "$WEB_STACK_NAME" \
+            --template-file infra/_user_profiles_web_stack.yaml \
+            --parameter-overrides \
+              ImageUri="$IMAGE_URI" \
+              CertificateArn="$WEB_CERTIFICATE_ARN" \
+              SecretArn="$WEB_SECRET_ARN" \
+              VpcId="$WEB_VPC_ID" \
+              PublicSubnets="$WEB_PUBLIC_SUBNETS" \
+              JobsQueueUrl="${{ steps.queue.outputs.url }}" \
+              AllowedEmails="$ALLOWED_EMAILS" \
+              AdminEmails="$ADMIN_EMAILS" \
+            --capabilities CAPABILITY_NAMED_IAM

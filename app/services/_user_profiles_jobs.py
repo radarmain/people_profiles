@@ -16,7 +16,12 @@ JOB_SUMMARIZE = "summarize"
 
 def _boto3_client(service: str, settings: Settings):
     kwargs: dict[str, Any] = {"region_name": settings.aws_region}
-    if settings.aws_profile and not os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+    managed_runtime = bool(
+        os.getenv("AWS_LAMBDA_FUNCTION_NAME")
+        or os.getenv("AWS_EXECUTION_ENV")
+        or settings.environment.lower() in {"production", "prod"}
+    )
+    if settings.aws_profile and not managed_runtime:
         session = boto3.Session(profile_name=settings.aws_profile, region_name=settings.aws_region)
         return session.client(service)
     return boto3.client(service, **kwargs)
