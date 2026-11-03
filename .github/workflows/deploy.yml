@@ -23,7 +23,6 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: production
     steps:
       - name: Check out source
         uses: actions/checkout@v4
